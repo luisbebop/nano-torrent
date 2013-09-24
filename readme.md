@@ -7,7 +7,8 @@ Compiling
 	
 Usage
 
-	$ ./nano-torrent localhost 23174
+	$ make
+	$ ./all localhost 23174
 	
 Additional links
 

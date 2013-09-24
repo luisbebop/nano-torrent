@@ -1,0 +1,1 @@
+void hex_dump(unsigned char *data, int size, char *caption);
