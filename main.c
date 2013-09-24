@@ -60,8 +60,8 @@ void hex_dump(unsigned char *data, int size, char *caption)
 
 void error(const char *msg)
 {
-    perror(msg);
-    exit(0);
+	perror(msg);
+	exit(0);
 }
 
 int connect_(int argc, char *argv[])
