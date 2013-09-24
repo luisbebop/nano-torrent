@@ -1,4 +1,4 @@
-OBJECTS = net.o util.o
+OBJECTS = net.o util.o bencode.o
 CC = gcc
 
 all: main.c $(OBJECTS)
