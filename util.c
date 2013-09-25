@@ -1,7 +1,7 @@
 #include <string.h>
 #include <stdio.h>
 
-void hex_dump(unsigned char *data, int size, char *caption)
+void hexdump(unsigned char *data, int size, char *caption)
 {
 	int i; // index in data...
 	int j; // index in line...

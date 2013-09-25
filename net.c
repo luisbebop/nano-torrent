@@ -13,7 +13,7 @@ void error(const char *msg)
 	exit(0);
 }
 
-void UCLConnect(int argc, char *argv[])
+void uclconnect(int argc, char *argv[])
 {
 	int sockfd, portno, n;
 	struct sockaddr_in serv_addr;
@@ -47,7 +47,7 @@ void UCLConnect(int argc, char *argv[])
 	socket_handle = sockfd;
 }
 
-int UCLSend(unsigned char * buf, int len)
+int uclsend(unsigned char * buf, int len)
 {
 	int n;
 	
@@ -59,7 +59,7 @@ int UCLSend(unsigned char * buf, int len)
 	return n;
 }
 
-int UCLReceive(unsigned char * buf, int maxlen)
+int uclreceive(unsigned char * buf, int maxlen)
 {
 	int n;
 	
@@ -71,6 +71,6 @@ int UCLReceive(unsigned char * buf, int maxlen)
 	return n;
 }
 
-void UCLClose() {
+void uclclose() {
 	close(socket_handle);
 }
