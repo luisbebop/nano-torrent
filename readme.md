@@ -3,11 +3,10 @@ This can be used in embedded environments with sockets restrictions and low band
 
 Compiling
 
-	$ gcc -o nano-torrent main.c
+	$ make clean && make
 	
 Usage
 
-	$ make
 	$ ./all localhost 23174
 	
 Additional links
