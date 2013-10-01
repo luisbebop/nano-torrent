@@ -77,6 +77,33 @@ void piece_message(int len, unsigned char *buf) {
 	//hexdump(buf, len, "index+begin+blockdata");
 }
 
+void parse_torrent(char * torrent_filename) {
+	// struct bencode_dict *torrent;
+	// struct bencode *info;
+	// struct bencode_list* files = (struct bencode_list*)ben_dict_get_by_str(info,"files");
+	// int piece_length = 0;
+	// 
+	// if (files) {
+	// 	printf("parse_torrent files != 0 ... multiple files\n");
+	// }
+	// else {
+	// 	printf("parse_torrent files == 0 ... single file\n");
+	// }
+	// 
+	// piece_length = ((struct bencode_int*)ben_dict_get_by_str(info,"piece length"))->ll;
+	// printf("parse_torrent piece_length=%d\n", piece_length);
+	unsigned char buf[4096];
+	int len = 0;
+	
+	memset(buf, 0, sizeof(buf));
+	len = readbinaryfile(buf, torrent_filename);
+	if (len > 0) {
+		hexdump(buf, len, "readbinaryfile");
+	} else {
+		printf("error on read torrent file.\n");
+	}
+}
+
 int debug = 1;
 
 // a main loop tha process all bittorrent messages received from the peer
