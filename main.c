@@ -9,11 +9,12 @@ int main(int argc, char *argv[]) {
 	printf("nano-torrent\n");
 	
 	// debug torrent file
-	parse_torrent("beauty_in_perspective.torrent");
+	ret = parse_torrent("beauty_in_perspective.torrent");
+	printf("parse_torrent ret=%d\n", ret);
 
 	// connect to a peer and starting to process bittorrent messages
 	ret = start_peer_connection(argc,argv);
-	printf("nano-torrent result=%d\n", ret);
+	printf("start_peer_connection ret=%d\n", ret);
 
 	return 0;
 }

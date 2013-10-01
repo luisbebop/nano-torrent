@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "bencode.h"
 #include "net.h"
 #include "util.h"
@@ -9,6 +10,72 @@ unsigned char digest[20] = {0xcb, 0xe2, 0xe7, 0xda, 0x3d, 0xa5, 0x90, 0x4b, 0xb4
 
 // we generate a new random peer id every time we start
 char peer_id[21]="-NYANCAT-";
+
+// read a torrent file. Support torrent with size less than 12k
+// 0 = read or parser error
+// 1 = file read ok
+int parse_torrent(char *torrent_filename) {
+	struct bencode *torrent;
+	struct bencode *info;
+	struct bencode_list *files;
+	struct bencode_str *filename;
+	int piece_length = 0;	
+	unsigned char buf[12 * 1024];
+	unsigned char *sha1_pieces;
+	int sha1_pieces_len;
+	int len = 0;
+	int file_length = 0;
+	
+	// read a torrent file
+	memset(buf, 0, sizeof(buf));
+	len = readbinaryfile(buf, torrent_filename);
+	// read fail
+	if (len <= 0) {
+		return 0;
+	}
+	
+	// decode the bencode buffer
+	torrent = (struct bencode*)ben_decode(buf,len);
+	// decode fail
+	if(!torrent) {
+		return 0;
+	}
+	
+	// pull out the .info part, which has stuff about the file we're downloading
+	info = (struct bencode*)ben_dict_get_by_str((struct bencode*)torrent,"info");
+	// decode fail
+	if(!info) {
+		// clean memory and return
+		ben_free(torrent);
+		return 0;
+	}
+	
+	// get the piece length
+	piece_length = ((struct bencode_int*)ben_dict_get_by_str(info,"piece length"))->ll;
+	printf("parse_torrent piece_length=%d\n", piece_length);
+	
+	// get the concatened SHA1 from all pieces
+	sha1_pieces = ((struct bencode_str*)ben_dict_get_by_str(info,"pieces"))->s;
+	sha1_pieces_len = ((struct bencode_str*)ben_dict_get_by_str(info,"pieces"))->len;
+	hexdump(sha1_pieces, sha1_pieces_len, "sha1_pieces");
+	
+	// get the files dict from multiple file torrent. otherwise is a single file torrent
+	files = (struct bencode_list*)ben_dict_get_by_str(info,"files");
+	if (files) {
+		printf("parse_torrent multiple files\n");
+	}
+	else {
+		filename = (struct bencode_str*)ben_dict_get_by_str(info,"name");
+		file_length = ((struct bencode_int*)ben_dict_get_by_str(info,"length"))->ll;
+		printf("parse_torrent filename=%s\n", filename->s);
+		printf("parse_torrent file_length=%d\n", file_length);
+		printf("parse_torrent check_next_piece=%d\n", check_next_piece(filename->s, file_length, piece_length));
+	}
+			
+	// clean memory and return
+	ben_free(torrent);
+	return 1;
+}
 
 // try to connect to a peer and init a bittorrent session
 // connection error or messages error = 0
@@ -82,23 +149,6 @@ void piece_message(int len, unsigned char *buf) {
 	printf("piece_message offset=%d\n", offset);
 }
 
-void parse_torrent(char * torrent_filename) {
-	// struct bencode_dict *torrent;
-	// struct bencode *info;
-	// struct bencode_list* files = (struct bencode_list*)ben_dict_get_by_str(info,"files");
-	// int piece_length = 0;
-	// 
-	// if (files) {
-	// 	printf("parse_torrent files != 0 ... multiple files\n");
-	// }
-	// else {
-	// 	printf("parse_torrent files == 0 ... single file\n");
-	// }
-	// 
-	// piece_length = ((struct bencode_int*)ben_dict_get_by_str(info,"piece length"))->ll;
-	// printf("parse_torrent piece_length=%d\n", piece_length);
-	unsigned char buf[4096];
-	int len = 0;
 // open a file checking what is the next piece to download. return the index of the piece to download
 // or -1 if the file is already downloaded.
 int check_next_piece(char * filename, int length, int piece_length) {
