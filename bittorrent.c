@@ -109,7 +109,7 @@ void parse_torrent(char * torrent_filename) {
 // 1 = finished with that peer (probably completed the file download!)
 int process_message_loop() {
 	// recv buffer
-	unsigned char recv[1024];
+	unsigned char recv[2048];
 	int recvd = 0;
 	int size_to_receive;
 	
@@ -155,7 +155,7 @@ int process_message_loop() {
 		switch(recv[0]) {
 			case 1: {
 				hexdump(recv, recvd, "unchoke message received");
-				requestblock_message(0,0,10);
+				requestblock_message(0,0,1024);
 				break;
 			}
 			case 5: {
