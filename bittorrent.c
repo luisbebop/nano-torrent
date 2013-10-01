@@ -74,7 +74,12 @@ void requestblock_message(int index, int begin, int length) {
 }
 
 void piece_message(int len, unsigned char *buf) {
-	//hexdump(buf, len, "index+begin+blockdata");
+	int piece = MAKELONG(MAKEWORD(buf[3], buf[2]), MAKEWORD(buf[1], buf[0]));
+	int offset = MAKELONG(MAKEWORD(buf[7], buf[6]), MAKEWORD(buf[5], buf[4]));
+	
+	printf("piece_message len=%d\n", len-8);
+	printf("piece_message piece=%d\n", piece);
+	printf("piece_message offset=%d\n", offset);
 }
 
 void parse_torrent(char * torrent_filename) {
