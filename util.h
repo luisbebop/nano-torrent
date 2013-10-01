@@ -16,5 +16,6 @@
 
 void hexdump(unsigned char *data, int size, char *caption);
 int readbinaryfile(unsigned char * buffer, char * filename);
+int getfilesize(char *filename);
 
 #endif /* _UTIL_H */

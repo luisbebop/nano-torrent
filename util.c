@@ -2,8 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 
-void hexdump(unsigned char *data, int size, char *caption)
-{
+void hexdump(unsigned char *data, int size, char *caption) {
 	int i; // index in data...
 	int j; // index in line...
 	char temp[8];
@@ -28,10 +27,8 @@ void hexdump(unsigned char *data, int size, char *caption)
 	buffer[2] = '0';
 	buffer[3] = '0';
 	buffer[4] = '0';
-	for (i = 0, j = 0; i < size; i++, j++)
-	{
-		if (j == 16)
-		{
+	for (i = 0, j = 0; i < size; i++, j++) {
+		if (j == 16) {
 			printf("%s", buffer);
 			memset(buffer, ' ', 58 + 16);
 
@@ -43,32 +40,31 @@ void hexdump(unsigned char *data, int size, char *caption)
 
 		sprintf(temp, "%02x", 0xff & data[i]);
 		memcpy(buffer + 8 + (j * 3), temp, 2);
-		if ((data[i] > 31) && (data[i] < 127))
+		if ((data[i] > 31) && (data[i] < 127)) {
 			ascii[j] = data[i];
-		else
+		} else {
 			ascii[j] = '.';
+		}
 	}
 
-	if (j != 0)
+	if (j != 0) {
 		printf("%s", buffer);
+	}
 }
 
 // reads a binary file with the flag 'rb' on fopen
 // return -1 if fail or the number of bytes read
-int readbinaryfile(unsigned char * buffer, char * filename)
-{
+int readbinaryfile(unsigned char * buffer, char * filename) {
 	FILE * h;
 	int i = 0;
 	char tmp;
 	
 	h = fopen(filename, "rb");
-	if (!h) 
-	{
+	if (!h) {
 		return -1;
 	}
 	
-	while (!feof(h))
-	{
+	while (!feof(h)) {
 		fread(&tmp,1,1,h);
 		buffer[i] = tmp;
 		i++;
@@ -76,4 +72,22 @@ int readbinaryfile(unsigned char * buffer, char * filename)
 	fclose(h);
 
 	return i-1;
+}
+
+int getfilesize(char *filename) {
+	FILE *h;
+	int len;
+	
+	h = fopen(filename, "rb");
+	if (!h) {
+		return -1;
+	}
+	
+	//Get file length
+    fseek(h, 0, SEEK_END);
+    len = ftell(h);
+    fseek(h, 0, SEEK_SET);
+
+	fclose(h);
+	return len;
 }
