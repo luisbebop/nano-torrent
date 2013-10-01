@@ -74,8 +74,10 @@ void requestblock_message(int index, int begin, int length) {
 }
 
 void piece_message(int len, unsigned char *buf) {
-	hexdump(buf, len, "index+begin+blockdata");
+	//hexdump(buf, len, "index+begin+blockdata");
 }
+
+int debug = 1;
 
 // a main loop tha process all bittorrent messages received from the peer
 // 0 = message error
@@ -128,7 +130,7 @@ int process_message_loop() {
 		switch(recv[0]) {
 			case 1: {
 				hexdump(recv, recvd, "unchoke message received");
-				requestblock_message(0,0,100);
+				requestblock_message(0,0,10);
 				break;
 			}
 			case 5: {
@@ -139,6 +141,10 @@ int process_message_loop() {
 			case 7: {
 				hexdump(recv, recvd, "piece message received");
 				piece_message(recvd-1, &recv[1]);
+				if (debug) {
+					requestblock_message(0,3,10);
+					debug = 0;
+				}
 				break;
 			}
 		}
