@@ -94,14 +94,23 @@ void parse_torrent(char * torrent_filename) {
 	// printf("parse_torrent piece_length=%d\n", piece_length);
 	unsigned char buf[4096];
 	int len = 0;
+// open a file checking what is the next piece to download. return the index of the piece to download
+// or -1 if the file is already downloaded.
+int check_next_piece(char * filename, int length, int piece_length) {
+	int file_length = 0;
 	
-	memset(buf, 0, sizeof(buf));
-	len = readbinaryfile(buf, torrent_filename);
-	if (len > 0) {
-		hexdump(buf, len, "readbinaryfile");
-	} else {
-		printf("error on read torrent file.\n");
+	file_length = getfilesize(filename);
+	// file doesn't exist or it hasn't any piece written yet.
+	if (file_length <= 0) {
+		return 0;
 	}
+	// size from file written on disk is equal size from file inside .torrent info
+	if (file_length == length) {
+		return -1;
+	}
+	// divides the actual size and the piece_length to check the next piece
+	// in a common torrent implementation we have to download pieces in a random order
+	return file_length/piece_length;
 }
 
 // a main loop tha process all bittorrent messages received from the peer
