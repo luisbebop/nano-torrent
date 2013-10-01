@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -50,4 +51,29 @@ void hexdump(unsigned char *data, int size, char *caption)
 
 	if (j != 0)
 		printf("%s", buffer);
+}
+
+// reads a binary file with the flag 'rb' on fopen
+// return -1 if fail or the number of bytes read
+int readbinaryfile(unsigned char * buffer, char * filename)
+{
+	FILE * h;
+	int i = 0;
+	char tmp;
+	
+	h = fopen(filename, "rb");
+	if (!h) 
+	{
+		return -1;
+	}
+	
+	while (!feof(h))
+	{
+		fread(&tmp,1,1,h);
+		buffer[i] = tmp;
+		i++;
+	}
+	fclose(h);
+
+	return i-1;
 }
