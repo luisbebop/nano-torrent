@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include "bencode.h"
 #include "net.h"
 #include "util.h"
 
