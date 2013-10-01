@@ -104,8 +104,6 @@ void parse_torrent(char * torrent_filename) {
 	}
 }
 
-int debug = 1;
-
 // a main loop tha process all bittorrent messages received from the peer
 // 0 = message error
 // 1 = finished with that peer (probably completed the file download!)
@@ -168,10 +166,6 @@ int process_message_loop() {
 			case 7: {
 				hexdump(recv, recvd, "piece message received");
 				piece_message(recvd-1, &recv[1]);
-				if (debug) {
-					requestblock_message(0,3,10);
-					debug = 0;
-				}
 				break;
 			}
 		}
