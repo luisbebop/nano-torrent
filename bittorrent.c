@@ -76,6 +76,7 @@ int parse_torrent(char *torrent_filename) {
 	// compute the message digest and info_hash from the "info" field in the torrent 
 	info_encoded = ben_encode(&info_len,(struct bencode*)info);
 	sha1_compute(info_encoded, info_len, digest);
+	free(info_encoded);
 	memset(display, 0, sizeof(display));
 	sha1_hexstring(digest, display);
 	printf("sha1 info .torrent=%s\n", display);
