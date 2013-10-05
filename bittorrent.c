@@ -11,6 +11,24 @@ unsigned char digest[20] = {0xcb, 0xe2, 0xe7, 0xda, 0x3d, 0xa5, 0x90, 0x4b, 0xb4
 // we generate a new random peer id every time we start
 char peer_id[21]="-NYANCAT-";
 
+// buffer to store a full piece from block requests. supports .torrent pieces til 32k
+unsigned char piece_buf[32 * 1024];
+
+// length of pieces to download
+int piece_length;
+
+// next piece to download
+int requested_piece;
+
+// name of the file we are downloading
+char downloading_filename[32];
+
+// length of the file we are downloading
+int downloading_filelen;
+
+// block size from tcp socket receive
+#define SIZE_RECV 1024
+
 // read a torrent file. Support torrent with size less than 12k
 // 0 = read or parser error
 // 1 = file read ok
@@ -18,13 +36,11 @@ int parse_torrent(char *torrent_filename) {
 	struct bencode *torrent;
 	struct bencode *info;
 	struct bencode_list *files;
-	struct bencode_str *filename;
-	int piece_length = 0;	
+	struct bencode_str *filename;	
 	unsigned char buf[12 * 1024];
 	unsigned char *sha1_pieces;
 	int sha1_pieces_len;
 	int len = 0;
-	int file_length = 0;
 	
 	// read a torrent file
 	memset(buf, 0, sizeof(buf));
@@ -66,10 +82,14 @@ int parse_torrent(char *torrent_filename) {
 	}
 	else {
 		filename = (struct bencode_str*)ben_dict_get_by_str(info,"name");
-		file_length = ((struct bencode_int*)ben_dict_get_by_str(info,"length"))->ll;
-		printf("parse_torrent filename=%s\n", filename->s);
-		printf("parse_torrent file_length=%d\n", file_length);
-		printf("parse_torrent check_next_piece=%d\n", check_next_piece(filename->s, file_length, piece_length));
+		memset(downloading_filename,0,sizeof(downloading_filename));
+		strcpy(downloading_filename,filename->s);
+		downloading_filelen = ((struct bencode_int*)ben_dict_get_by_str(info,"length"))->ll;
+		requested_piece = check_next_piece(downloading_filename, downloading_filelen, piece_length);
+		
+		printf("parse_torrent downloading_filename=%s\n", downloading_filename);
+		printf("parse_torrent downloading_filelen=%d\n", downloading_filelen);
+		printf("parse_torrent requested_piece=%d\n", requested_piece);
 	}
 			
 	// clean memory and return
@@ -143,10 +163,46 @@ void requestblock_message(int index, int begin, int length) {
 void piece_message(int len, unsigned char *buf) {
 	int piece = MAKELONG(MAKEWORD(buf[3], buf[2]), MAKEWORD(buf[1], buf[0]));
 	int offset = MAKELONG(MAKEWORD(buf[7], buf[6]), MAKEWORD(buf[5], buf[4]));
+	int datalen = len-8;
+	int maxlen = 0;
+	int size_to_receive = SIZE_RECV;
+	FILE *fp;
 	
-	printf("piece_message len=%d\n", len-8);
+	printf("piece_message len=%d\n", datalen);
 	printf("piece_message piece=%d\n", piece);
+	printf("piece_message requested_piece=%d\n", requested_piece);
 	printf("piece_message offset=%d\n", offset);
+
+	memcpy(&piece_buf[offset], &buf[8], datalen);
+	
+	// just get a new piece or the last piece from file that may contain bytes from the
+	// first piece of another file
+	offset+=datalen;
+	printf("piece_message download= %d|%d\n", piece*piece_length+offset, downloading_filelen);
+	if (offset == piece_length || (offset+(piece*piece_length) == downloading_filelen)) {
+		// check SHA1 from this piece
+		
+		// write this piece to a file
+		fp = fopen(downloading_filename,"ab");
+		fwrite(piece_buf, offset, 1, fp);
+		fclose(fp);
+		
+		// reset offset for the next piece
+		offset = 0;
+	}
+	
+	// request a new piece. if check_next_piece == -1, download finished and don't request a new piece
+	requested_piece = check_next_piece(downloading_filename, downloading_filelen, piece_length);
+	printf("piece_message requested_piece=%d\n", requested_piece);
+	if (requested_piece >= 0) {
+		// the last block is likely to be of non-standard size
+		maxlen = downloading_filelen - (piece*piece_length+offset);
+		if (maxlen < SIZE_RECV) {
+			size_to_receive = maxlen;
+		}
+		printf("piece_message size_to_receive=%d\n", size_to_receive);
+		requestblock_message(requested_piece,offset,size_to_receive);
+	}	
 }
 
 // open a file checking what is the next piece to download. return the index of the piece to download
@@ -155,6 +211,7 @@ int check_next_piece(char * filename, int length, int piece_length) {
 	int file_length = 0;
 	
 	file_length = getfilesize(filename);
+	printf("check_next_piece file_length=%d\n", file_length);
 	// file doesn't exist or it hasn't any piece written yet.
 	if (file_length <= 0) {
 		return 0;
@@ -219,7 +276,7 @@ int process_message_loop() {
 		switch(recv[0]) {
 			case 1: {
 				hexdump(recv, recvd, "unchoke message received");
-				requestblock_message(0,0,1024);
+				requestblock_message(requested_piece,0,SIZE_RECV);
 				break;
 			}
 			case 5: {
