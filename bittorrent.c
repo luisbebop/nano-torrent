@@ -246,7 +246,7 @@ int check_next_piece() {
 	if (files) {
 		printf("check_next_piece multiple files\n");
 		for (i=0; i < files->n; i++) {
-			file = files->value[i];
+			file = files->values[i];
 			path = (struct bencode_list*)ben_dict_get_by_str(file,"path");
 			printf("check_next_piece filename[i]=%s\n", ((struct bencode_str*)path->values[(path->n)-1])->s);
 		}
