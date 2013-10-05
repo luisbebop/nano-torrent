@@ -4,12 +4,16 @@
 #include "bencode.h"
 #include "net.h"
 #include "util.h"
+#include "sha1.h"
 
-// The SHA1 digest of the document we're downloading this time.
-unsigned char digest[20] = {0xcb, 0xe2, 0xe7, 0xda, 0x3d, 0xa5, 0x90, 0x4b, 0xb4, 0xb6, 0x2b, 0x78, 0x23, 0x2e, 0xeb, 0x20, 0xbc, 0x2e, 0x35, 0xc9};
+// The SHA1 digest of the .torrent we're downloading this time.
+unsigned char digest[20];
 
 // we generate a new random peer id every time we start
 char peer_id[21]="-NYANCAT-";
+
+// SHA1 from pieces inside .torrent file
+unsigned char pieces_sha1[2048];
 
 // buffer to store a full piece from block requests. supports .torrent pieces til 32k
 unsigned char piece_buf[32 * 1024];
@@ -41,6 +45,9 @@ int parse_torrent(char *torrent_filename) {
 	unsigned char *sha1_pieces;
 	int sha1_pieces_len;
 	int len = 0;
+	size_t info_len;
+	char *info_encoded;
+	char display[41];
 	
 	// read a torrent file
 	memset(buf, 0, sizeof(buf));
@@ -66,6 +73,13 @@ int parse_torrent(char *torrent_filename) {
 		return 0;
 	}
 	
+	// compute the message digest and info_hash from the "info" field in the torrent 
+	info_encoded = ben_encode(&info_len,(struct bencode*)info);
+	sha1_compute(info_encoded, info_len, digest);
+	memset(display, 0, sizeof(display));
+	sha1_hexstring(digest, display);
+	printf("sha1 info .torrent=%s\n", display);
+	
 	// get the piece length
 	piece_length = ((struct bencode_int*)ben_dict_get_by_str(info,"piece length"))->ll;
 	printf("parse_torrent piece_length=%d\n", piece_length);
@@ -73,7 +87,8 @@ int parse_torrent(char *torrent_filename) {
 	// get the concatened SHA1 from all pieces
 	sha1_pieces = ((struct bencode_str*)ben_dict_get_by_str(info,"pieces"))->s;
 	sha1_pieces_len = ((struct bencode_str*)ben_dict_get_by_str(info,"pieces"))->len;
-	hexdump(sha1_pieces, sha1_pieces_len, "sha1_pieces");
+	memcpy(pieces_sha1, sha1_pieces, sha1_pieces_len);
+	hexdump(pieces_sha1, sha1_pieces_len, "pieces_sha1");
 	
 	// get the files dict from multiple file torrent. otherwise is a single file torrent
 	files = (struct bencode_list*)ben_dict_get_by_str(info,"files");
@@ -166,6 +181,7 @@ void piece_message(int len, unsigned char *buf) {
 	int datalen = len-8;
 	int maxlen = 0;
 	int size_to_receive = SIZE_RECV;
+	unsigned char sha1_piece[20];
 	FILE *fp;
 	
 	printf("piece_message len=%d\n", datalen);
@@ -180,12 +196,15 @@ void piece_message(int len, unsigned char *buf) {
 	offset+=datalen;
 	printf("piece_message download= %d|%d\n", piece*piece_length+offset, downloading_filelen);
 	if (offset == piece_length || (offset+(piece*piece_length) == downloading_filelen)) {
-		// check SHA1 from this piece
-		
-		// write this piece to a file
-		fp = fopen(downloading_filename,"ab");
-		fwrite(piece_buf, offset, 1, fp);
-		fclose(fp);
+		// check SHA1 from this piece. just write to file if the SHA1 from this piece is valid
+		sha1_compute(piece_buf, offset, sha1_piece);
+		if (memcmp(&sha1_piece[0], &pieces_sha1[piece*20], 20) == 0) {
+			printf("piece_message SHA1 valid. writing piece_buf\n");
+			// write this piece to a file
+			fp = fopen(downloading_filename,"ab");
+			fwrite(piece_buf, offset, 1, fp);
+			fclose(fp);
+		}
 		
 		// reset offset for the next piece
 		offset = 0;
