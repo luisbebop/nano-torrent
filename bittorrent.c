@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "bittorrent.h"
 #include "bencode.h"
 #include "net.h"
 #include "util.h"
@@ -21,13 +22,22 @@ unsigned char piece_buf[32 * 1024];
 // length of pieces to download
 int piece_length;
 
+// number of pieces to download
+int pieces_num;
+
 // next piece to download
 int requested_piece;
 
-// name of the file we are downloading
-char downloading_filename[32];
+// .torrent dictionary
+struct bencode *torrent;
 
-// length of the file we are downloading
+// .torrent info dictionary
+struct bencode *info;
+
+// .torrent files dictionary
+struct bencode_list *files;
+
+// length of the file being downloaded
 int downloading_filelen;
 
 // block size from tcp socket receive
@@ -36,18 +46,13 @@ int downloading_filelen;
 // read a torrent file. Support torrent with size less than 12k
 // 0 = read or parser error
 // 1 = file read ok
-int parse_torrent(char *torrent_filename) {
-	struct bencode *torrent;
-	struct bencode *info;
-	struct bencode_list *files;
-	struct bencode_str *filename;	
+int parse_torrent(char *torrent_filename) {	
 	unsigned char buf[12 * 1024];
 	unsigned char *sha1_pieces;
 	int sha1_pieces_len;
 	int len = 0;
 	size_t info_len;
 	char *info_encoded;
-	char display[41];
 	
 	// read a torrent file
 	memset(buf, 0, sizeof(buf));
@@ -68,8 +73,6 @@ int parse_torrent(char *torrent_filename) {
 	info = (struct bencode*)ben_dict_get_by_str((struct bencode*)torrent,"info");
 	// decode fail
 	if(!info) {
-		// clean memory and return
-		ben_free(torrent);
 		return 0;
 	}
 	
@@ -77,9 +80,7 @@ int parse_torrent(char *torrent_filename) {
 	info_encoded = ben_encode(&info_len,(struct bencode*)info);
 	sha1_compute(info_encoded, info_len, digest);
 	free(info_encoded);
-	memset(display, 0, sizeof(display));
-	sha1_hexstring(digest, display);
-	printf("sha1 info .torrent=%s\n", display);
+	hexdump(digest, 20, "parse_torrent digest");
 	
 	// get the piece length
 	piece_length = ((struct bencode_int*)ben_dict_get_by_str(info,"piece length"))->ll;
@@ -89,27 +90,13 @@ int parse_torrent(char *torrent_filename) {
 	sha1_pieces = ((struct bencode_str*)ben_dict_get_by_str(info,"pieces"))->s;
 	sha1_pieces_len = ((struct bencode_str*)ben_dict_get_by_str(info,"pieces"))->len;
 	memcpy(pieces_sha1, sha1_pieces, sha1_pieces_len);
-	hexdump(pieces_sha1, sha1_pieces_len, "pieces_sha1");
+	pieces_num = (sha1_pieces_len/20);
+	printf("parse_torrent pieces=%d\n", pieces_num);
+	hexdump(pieces_sha1, sha1_pieces_len, "parse_torrent pieces_sha1");
 	
-	// get the files dict from multiple file torrent. otherwise is a single file torrent
-	files = (struct bencode_list*)ben_dict_get_by_str(info,"files");
-	if (files) {
-		printf("parse_torrent multiple files\n");
-	}
-	else {
-		filename = (struct bencode_str*)ben_dict_get_by_str(info,"name");
-		memset(downloading_filename,0,sizeof(downloading_filename));
-		strcpy(downloading_filename,filename->s);
-		downloading_filelen = ((struct bencode_int*)ben_dict_get_by_str(info,"length"))->ll;
-		requested_piece = check_next_piece(downloading_filename, downloading_filelen, piece_length);
-		
-		printf("parse_torrent downloading_filename=%s\n", downloading_filename);
-		printf("parse_torrent downloading_filelen=%d\n", downloading_filelen);
-		printf("parse_torrent requested_piece=%d\n", requested_piece);
-	}
+	// checking next piece to download
+	requested_piece = check_next_piece();
 			
-	// clean memory and return
-	ben_free(torrent);
 	return 1;
 }
 
@@ -182,8 +169,6 @@ void piece_message(int len, unsigned char *buf) {
 	int datalen = len-8;
 	int maxlen = 0;
 	int size_to_receive = SIZE_RECV;
-	unsigned char sha1_piece[20];
-	FILE *fp;
 	
 	printf("piece_message len=%d\n", datalen);
 	printf("piece_message piece=%d\n", piece);
@@ -195,24 +180,26 @@ void piece_message(int len, unsigned char *buf) {
 	// just get a new piece or the last piece from file that may contain bytes from the
 	// first piece of another file
 	offset+=datalen;
-	printf("piece_message download= %d|%d\n", piece*piece_length+offset, downloading_filelen);
-	if (offset == piece_length || (offset+(piece*piece_length) == downloading_filelen)) {
-		// check SHA1 from this piece. just write to file if the SHA1 from this piece is valid
-		sha1_compute(piece_buf, offset, sha1_piece);
-		if (memcmp(&sha1_piece[0], &pieces_sha1[piece*20], 20) == 0) {
-			printf("piece_message SHA1 valid. writing piece_buf\n");
-			// write this piece to a file
-			fp = fopen(downloading_filename,"ab");
-			fwrite(piece_buf, offset, 1, fp);
-			fclose(fp);
-		}
-		
-		// reset offset for the next piece
-		offset = 0;
-	}
 	
+	if(files) {
+		printf("piece_message multiple files\n");
+		
+	} else {
+		printf("piece_message single file\n");
+		downloading_filelen = ((struct bencode_int*)ben_dict_get_by_str(info,"length"))->ll;
+		printf("piece_message download= %d|%d\n", piece*piece_length+offset, downloading_filelen);	
+		// not-crossing file boundaries on single file torrents
+		if (offset == piece_length || (offset+(piece*piece_length) == downloading_filelen)) {
+			// saving piece to disk
+			save_piece(piece_buf, piece, offset, datalen);
+			
+			// reset offset for the next piece
+			offset = 0;
+		}
+	}
+		
 	// request a new piece. if check_next_piece == -1, download finished and don't request a new piece
-	requested_piece = check_next_piece(downloading_filename, downloading_filelen, piece_length);
+	requested_piece = check_next_piece();
 	printf("piece_message requested_piece=%d\n", requested_piece);
 	if (requested_piece >= 0) {
 		// the last block is likely to be of non-standard size
@@ -225,24 +212,66 @@ void piece_message(int len, unsigned char *buf) {
 	}	
 }
 
+void save_piece(unsigned char *piece_buf, int piece, int offset, int len) {
+	unsigned char sha1_piece[20];
+	FILE *fp;
+	
+	if (files) {
+		printf("save_piece multiple files\n");
+	} else {
+		printf("save_piece single file\n");
+		// check SHA1 from this piece. just write to file if the SHA1 from this piece is valid
+		sha1_compute(piece_buf, offset, sha1_piece);
+		if (memcmp(&sha1_piece[0], &pieces_sha1[piece*20], 20) == 0) {
+			printf("save_piece SHA1 valid. writing piece_buf\n");
+			// write this piece to a file
+			fp = fopen(((struct bencode_str*)ben_dict_get_by_str(info,"name"))->s,"ab");
+			fwrite(piece_buf, offset, 1, fp);
+			fclose(fp);
+		}
+	}
+}
+
 // open a file checking what is the next piece to download. return the index of the piece to download
 // or -1 if the file is already downloaded.
-int check_next_piece(char * filename, int length, int piece_length) {
+int check_next_piece() {
 	int file_length = 0;
+	int i = 0;
+	struct bencode* file;
+	struct bencode_list* path;
+
+	// get the files dict from multiple file torrent. otherwise is a single file torrent
+	files = (struct bencode_list*)ben_dict_get_by_str(info,"files");
 	
-	file_length = getfilesize(filename);
-	printf("check_next_piece file_length=%d\n", file_length);
-	// file doesn't exist or it hasn't any piece written yet.
-	if (file_length <= 0) {
-		return 0;
+	if (files) {
+		printf("check_next_piece multiple files\n");
+		for (i=0; i < files->n; i++) {
+			file = files->value[i];
+			path = (struct bencode_list*)ben_dict_get_by_str(file,"path");
+			printf("check_next_piece filename[i]=%s\n", ((struct bencode_str*)path->values[(path->n)-1])->s);
+		}
+		exit(0);
+	} else {
+		printf("check next_piece single file\n");
+		// get the filename from file inside .torrent and check its size
+		file_length = getfilesize(((struct bencode_str*)ben_dict_get_by_str(info,"name"))->s);
+		printf("check_next_piece file_length=%d\n", file_length);
+		
+		// file doesn't exist or it hasn't any piece written yet.
+		if (file_length <= 0) {
+			return 0;
+		}
+		// size from file written on disk is equal size from file inside .torrent info
+		if (file_length == ((struct bencode_int*)ben_dict_get_by_str(info,"length"))->ll) {
+			return -1;
+		}
+		
+		// divides the actual size and the piece_length to check the next piece
+		// in a common torrent implementation we have to download pieces in a random order
+		return file_length/piece_length;
 	}
-	// size from file written on disk is equal size from file inside .torrent info
-	if (file_length == length) {
-		return -1;
-	}
-	// divides the actual size and the piece_length to check the next piece
-	// in a common torrent implementation we have to download pieces in a random order
-	return file_length/piece_length;
+	
+	return -1;
 }
 
 // a main loop tha process all bittorrent messages received from the peer
@@ -310,5 +339,11 @@ int process_message_loop() {
 				break;
 			}
 		}
+	}
+}
+
+void clean_memory() {
+	if(torrent) {
+		ben_free(torrent);
 	}
 }

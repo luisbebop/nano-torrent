@@ -10,11 +10,16 @@ int main(int argc, char *argv[]) {
 	
 	// debug torrent file
 	ret = parse_torrent("beauty_in_perspective.torrent");
+	//ret = parse_torrent("walk_sagem.torrent");
+	
 	printf("parse_torrent ret=%d\n", ret);
 
 	// connect to a peer and starting to process bittorrent messages
 	ret = start_peer_connection(argc,argv);
 	printf("start_peer_connection ret=%d\n", ret);
+	
+	// clean memory from bencode parser
+	clean_memory();
 
 	return 0;
 }
