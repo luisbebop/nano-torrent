@@ -38,7 +38,7 @@ struct bencode *info;
 struct bencode_list *files;
 
 // length of the file being downloaded
-int downloading_filelen;
+int file_length;
 
 // block size from tcp socket receive
 #define SIZE_RECV 1024
@@ -96,7 +96,9 @@ int parse_torrent(char *torrent_filename) {
 	
 	// checking next piece to download
 	requested_piece = check_next_piece();
-			
+	printf("parse_torrent requested_piece=%d\n", requested_piece);
+	printf("parse_torrent file_length=%d\n", file_length);
+				
 	return 1;
 }
 
@@ -181,29 +183,25 @@ void piece_message(int len, unsigned char *buf) {
 	// first piece of another file
 	offset+=datalen;
 	
-	if(files) {
-		printf("piece_message multiple files\n");
-		
-	} else {
-		printf("piece_message single file\n");
-		downloading_filelen = ((struct bencode_int*)ben_dict_get_by_str(info,"length"))->ll;
-		printf("piece_message download= %d|%d\n", piece*piece_length+offset, downloading_filelen);	
-		// not-crossing file boundaries on single file torrents
-		if (offset == piece_length || (offset+(piece*piece_length) == downloading_filelen)) {
+	printf("piece_message download= %d|%d\n", offset+(piece*piece_length), file_length);
+	if (offset == piece_length || (offset+(piece*piece_length) == file_length)) {
+		// check SHA1 piece
+		if(check_sha1_piece(piece_buf, piece, offset)) {
 			// saving piece to disk
-			save_piece(piece_buf, piece, offset, datalen);
-			
-			// reset offset for the next piece
-			offset = 0;
+			save_piece(piece_buf, piece, offset);	
 		}
-	}
+		// reset offset for the next piece
+		offset = 0;
 		
+		exit(0);
+	}
+			
 	// request a new piece. if check_next_piece == -1, download finished and don't request a new piece
 	requested_piece = check_next_piece();
 	printf("piece_message requested_piece=%d\n", requested_piece);
 	if (requested_piece >= 0) {
 		// the last block is likely to be of non-standard size
-		maxlen = downloading_filelen - (piece*piece_length+offset);
+		maxlen = file_length - (piece*piece_length+offset);
 		if (maxlen < SIZE_RECV) {
 			size_to_receive = maxlen;
 		}
@@ -212,31 +210,84 @@ void piece_message(int len, unsigned char *buf) {
 	}	
 }
 
-void save_piece(unsigned char *piece_buf, int piece, int offset, int len) {
+int check_sha1_piece(unsigned char *piece_buf, int piece, int offset) {
 	unsigned char sha1_piece[20];
-	FILE *fp;
 	
+	// check SHA1 from this piece. just write to file if the SHA1 from this piece is valid
+	sha1_compute(piece_buf, offset, sha1_piece);
+	if (memcmp(&sha1_piece[0], &pieces_sha1[piece*20], 20) == 0) {
+		return 1;
+	} else {
+		printf("invalid sha1 piece\n");
+		exit(0); // debug remove
+		
+		return 0;
+	}
+}
+
+void save_piece(unsigned char *piece_buf, int piece, int offset) {
+	struct bencode* file;
+	struct bencode_list* path;
+	int i;
+	int index;
+	int bytes_to_write;
+	int file_len;
+	int file_len_disk;
+	FILE *fp;
+		
 	if (files) {
-		printf("save_piece multiple files\n");
+		printf("save_piece multiple files piece=%d\n", piece);
+		bytes_to_write = offset;
+		index = 0;
+				
+		for (i=0; i < files->n; i++) {
+			file = files->values[i];
+			path = (struct bencode_list*)ben_dict_get_by_str(file,"path");
+			file_len = ((struct bencode_int*)ben_dict_get_by_str(file,"length"))->ll;
+			file_len_disk = getfilesize(((struct bencode_str*)path->values[(path->n)-1])->s);
+			if (file_len_disk < 0) {
+				file_len_disk = 0;
+			}
+			
+			printf("[%d]save_piece filename=%s\n", i, ((struct bencode_str*)path->values[(path->n)-1])->s);
+			printf("[%d]save_piece file_len=%d\n", i, file_len);
+			printf("[%d]save_piece bytes_to_write=%d\n", i, bytes_to_write);
+			printf("[%d]save_piece file_len-file_len_disk=%d\n", i, file_len - file_len_disk);
+			
+			if (file_len_disk < file_len && bytes_to_write > 0) {
+				// check file buffer cross boundaries
+				if (bytes_to_write > (file_len - file_len_disk)) {
+					printf("[%d]save_piece cross-boundaries index=%d bytes_to_write=%d\n", i, index, bytes_to_write);
+					fp = fopen(((struct bencode_str*)path->values[(path->n)-1])->s,"ab");
+					fwrite(&piece_buf[index], (file_len - file_len_disk), 1, fp);
+					fclose(fp);
+					index += (file_len - file_len_disk);
+					bytes_to_write -= (file_len - file_len_disk);
+					printf("[%d]save_piece cross-boundaries index=%d bytes_to_write=%d\n", i, index, bytes_to_write);					
+				} else {
+					printf("[%d]save_piece normal index=%d bytes_to_write=%d\n", i, index, bytes_to_write);	
+					fp = fopen(((struct bencode_str*)path->values[(path->n)-1])->s,"ab");
+					fwrite(&piece_buf[index], bytes_to_write, 1, fp);
+					fclose(fp);
+					return;
+				}
+			}
+		}
 	} else {
 		printf("save_piece single file\n");
-		// check SHA1 from this piece. just write to file if the SHA1 from this piece is valid
-		sha1_compute(piece_buf, offset, sha1_piece);
-		if (memcmp(&sha1_piece[0], &pieces_sha1[piece*20], 20) == 0) {
-			printf("save_piece SHA1 valid. writing piece_buf\n");
-			// write this piece to a file
-			fp = fopen(((struct bencode_str*)ben_dict_get_by_str(info,"name"))->s,"ab");
-			fwrite(piece_buf, offset, 1, fp);
-			fclose(fp);
-		}
+		// write this piece to a file
+		fp = fopen(((struct bencode_str*)ben_dict_get_by_str(info,"name"))->s,"ab");
+		fwrite(piece_buf, offset, 1, fp);
+		fclose(fp);
 	}
 }
 
 // open a file checking what is the next piece to download. return the index of the piece to download
 // or -1 if the file is already downloaded.
 int check_next_piece() {
-	int file_length = 0;
 	int i = 0;
+	int file_len_disk = 0;
+	int total_size = 0;
 	struct bencode* file;
 	struct bencode_list* path;
 
@@ -244,34 +295,47 @@ int check_next_piece() {
 	files = (struct bencode_list*)ben_dict_get_by_str(info,"files");
 	
 	if (files) {
+		file_length = 0;
 		printf("check_next_piece multiple files\n");
 		for (i=0; i < files->n; i++) {
 			file = files->values[i];
 			path = (struct bencode_list*)ben_dict_get_by_str(file,"path");
 			printf("check_next_piece filename[i]=%s\n", ((struct bencode_str*)path->values[(path->n)-1])->s);
+			
+			file_length += ((struct bencode_int*)ben_dict_get_by_str(file,"length"))->ll;
+			file_len_disk = getfilesize(((struct bencode_str*)path->values[(path->n)-1])->s);
+		
+			printf("check_next_piece file_len_disk=%d\n", file_len_disk);
+		
+			// sum the size of all files on disk
+			if (file_len_disk > 0) {
+				total_size += file_len_disk;
+			}
 		}
-		exit(0);
 	} else {
 		printf("check next_piece single file\n");
+		
+		// set the size from file inside .torrent
+		file_length = ((struct bencode_int*)ben_dict_get_by_str(info,"length"))->ll;
+		
 		// get the filename from file inside .torrent and check its size
-		file_length = getfilesize(((struct bencode_str*)ben_dict_get_by_str(info,"name"))->s);
+		total_size = getfilesize(((struct bencode_str*)ben_dict_get_by_str(info,"name"))->s);
 		printf("check_next_piece file_length=%d\n", file_length);
-		
-		// file doesn't exist or it hasn't any piece written yet.
-		if (file_length <= 0) {
-			return 0;
-		}
-		// size from file written on disk is equal size from file inside .torrent info
-		if (file_length == ((struct bencode_int*)ben_dict_get_by_str(info,"length"))->ll) {
-			return -1;
-		}
-		
-		// divides the actual size and the piece_length to check the next piece
-		// in a common torrent implementation we have to download pieces in a random order
-		return file_length/piece_length;
 	}
 	
-	return -1;
+	// size from file written on disk is equal size from file inside .torrent info
+	if (total_size == file_length) {
+		return -1;
+	}
+
+	// file doesn't exist or it hasn't any piece written yet.
+	if (total_size <= 0) {
+		return 0;
+	}
+
+	// divides the actual size and the piece_length to check the next piece
+	// in a common torrent implementation we have to download pieces in a random order
+	return total_size/piece_length;
 }
 
 // a main loop tha process all bittorrent messages received from the peer
