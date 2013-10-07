@@ -192,8 +192,6 @@ void piece_message(int len, unsigned char *buf) {
 		}
 		// reset offset for the next piece
 		offset = 0;
-		
-		exit(0);
 	}
 			
 	// request a new piece. if check_next_piece == -1, download finished and don't request a new piece
@@ -218,9 +216,7 @@ int check_sha1_piece(unsigned char *piece_buf, int piece, int offset) {
 	if (memcmp(&sha1_piece[0], &pieces_sha1[piece*20], 20) == 0) {
 		return 1;
 	} else {
-		printf("invalid sha1 piece\n");
-		exit(0); // debug remove
-		
+		printf("invalid sha1 piece\n");		
 		return 0;
 	}
 }
