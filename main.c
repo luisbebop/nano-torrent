@@ -10,8 +10,8 @@ int main(int argc, char *argv[]) {
 	
 	// debug torrent file
 	//ret = parse_torrent("beauty_in_perspective.torrent");
-	ret = parse_torrent("test-torrent.torrent");
-	//ret = parse_torrent("pale-blue-dot.torrent");
+	//ret = parse_torrent("test-torrent.torrent");
+	ret = parse_torrent("pale-blue-dot.torrent");
 	
 	printf("parse_torrent ret=%d\n", ret);
 

@@ -165,7 +165,7 @@ void requestblock_message(int index, int begin, int length) {
 	hexdump(buf, 17, "sent request block");
 }
 
-void piece_message(int len, unsigned char *buf) {
+int piece_message(int len, unsigned char *buf) {
 	int piece = MAKELONG(MAKEWORD(buf[3], buf[2]), MAKEWORD(buf[1], buf[0]));
 	int offset = MAKELONG(MAKEWORD(buf[7], buf[6]), MAKEWORD(buf[5], buf[4]));
 	int datalen = len-8;
@@ -205,6 +205,10 @@ void piece_message(int len, unsigned char *buf) {
 		}
 		printf("piece_message size_to_receive=%d\n", size_to_receive);
 		requestblock_message(requested_piece,offset,size_to_receive);
+		return 0;
+	} else {
+		// downloaded all pieces
+		return 1;
 	}	
 }
 
@@ -395,7 +399,15 @@ int process_message_loop() {
 			}
 			case 7: {
 				hexdump(recv, recvd, "piece message received");
-				piece_message(recvd-1, &recv[1]);
+				if(piece_message(recvd-1, &recv[1])) {
+					// downloaded finished
+					// close connection and return
+					printf("closing connection and exiting process_message_loop()\n");
+					printf("all pieces downloaded()\n");
+					// close peer
+					uclclose();
+					return 1;
+				}
 				break;
 			}
 		}
