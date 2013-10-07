@@ -98,6 +98,9 @@ int parse_torrent(char *torrent_filename) {
 	requested_piece = check_next_piece();
 	printf("parse_torrent requested_piece=%d\n", requested_piece);
 	printf("parse_torrent file_length=%d\n", file_length);
+	
+	// TODO
+	// return torrent number of pieces, piece_length and number of pieces already downloaded
 				
 	return 1;
 }
