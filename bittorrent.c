@@ -115,6 +115,8 @@ int start_peer_connection(int argc, char *argv[]) {
 	
 	if (handshake_message()) {
 		return process_message_loop();
+	} else {
+		uclclose();
 	}
 	
 	return 0;
