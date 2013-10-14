@@ -381,6 +381,18 @@ int process_message_loop() {
 		recvd = uclreceive(recv, size_to_receive);
 		hexdump(recv, recvd, "uclreceive N");
 		if (recvd != size_to_receive) {
+			// receiving a DHT hash table
+			if (recvd > 0) {
+				size_to_receive -= recvd;
+				while (size_to_receive > 0) {
+					recvd = uclreceive(recv, size_to_receive);
+					hexdump(recv, recvd, "uclreceive DHT hash table");
+					size_to_receive -= recvd;
+				}
+				// next message
+				continue;
+			}
+			
 			// close connection and return
 			printf("closing connection and exiting process_message_loop()\n");
 			// close peer
